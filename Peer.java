@@ -27,21 +27,20 @@ public class Peer {
 	private static int portaPeer1;
 	private static String ipPeer2;
 	private static int portaPeer2;
-    private static Gson gson = new Gson();
-    private static List<String> mensagensProcessadas = new ArrayList<String>();
-    private static String arquivoProcurado;
-    
-    /**
-     * Funcionalidade C
-    * Thread que atualiza os arquivos das pastas a cada 30s
-    */
+	private static List<String> mensagensProcessadas = new ArrayList<String>();
+	private static String arquivoProcurado;
+	
+	/**
+	 * Funcionalidade C
+	* Thread que atualiza os arquivos das pastas a cada 30s
+	*/
 	public static class ThreadAtualizaArquivosPasta extends Thread {
 		public void run() {
 			while(true) {
 				preencheArquivosPasta();
-				System.out.println("Sou peer " + meuIp + ":" + minhaPorta + " com arquivos " + String.join(", ", arquivos));
+				System.out.println("Sou peer " + meuIp + ":" + minhaPorta + " com arquivos " + String.join(", ", arquivos) + "\n");
 				try {
-					Thread.sleep(300000); //30s
+					Thread.sleep(30000); //30s
 				} catch (Exception e) {
 				}
 			}
@@ -81,42 +80,42 @@ public class Peer {
 					serverSocket.receive(recPkt);
 			
 					String requestStr = new String(recPkt.getData(), recPkt.getOffset(), recPkt.getLength());
-				    Mensagem mensagem = gson.fromJson(requestStr, Mensagem.class);
-					
-				    
-				    switch(mensagem.Tipo) {
-				    	case "SEARCH":
-				    		if(mensagemJaProcessada(mensagem)) {
+					Mensagem mensagem = new Gson().fromJson(requestStr, Mensagem.class);
+				
+					switch(mensagem.Tipo) {
+						case "SEARCH":
+							if(mensagemJaProcessada(mensagem)) {
 								System.out.println("requisição já processada para " + mensagem.Corpo);
-				    			break;
-				    		}
-				    		mensagensProcessadas.add(mensagem.Ip_Requisitante + ":" + mensagem.Porta_Requisitante + " " + mensagem.Corpo);
-				    		
-				    		if(arquivos.contains(mensagem.Corpo)) {
+								break;
+							}
+							mensagensProcessadas.add(mensagem.Tipo + " - " + mensagem.Ip_Requisitante + ":" + mensagem.Porta_Requisitante + " " + mensagem.Corpo);
+							
+							if(arquivos.contains(mensagem.Corpo)) {
 								System.out.println("tenho " + mensagem.Corpo + " respondendo para " + mensagem.Ip_Requisitante + ":" + mensagem.Porta_Requisitante);
 								String base64File = encodeFileToBase64Binary(nomePasta + "/" + mensagem.Corpo);
 								mensagem.Tipo = "RESPONSE";
 								mensagem.Arquivo_Base64 = base64File;
+								mensagem.IpPorta_Sender = meuIp + ":" + minhaPorta;
 								enviaMensagem(mensagem);
-					    	} else {
-					    		String nextPeer = enviaMensagem(mensagem);
+							} else {
+								String nextPeer = enviaMensagem(mensagem);
 								System.out.println("não tenho " + mensagem.Corpo + ", encaminhando para " +nextPeer );
-					    	}
-				    		break;
-				    	case "RESPONSE":
-				    		if(mensagemJaProcessada(mensagem)) {
+							}
+							break;
+						case "RESPONSE":
+							if(mensagemJaProcessada(mensagem)) {
 								System.out.println("requisição já processada para " + mensagem.Corpo);
-				    			break;
-				    		}
-				    		
-				    		mensagensProcessadas.add(mensagem.Ip_Requisitante + ":" + mensagem.Porta_Requisitante + " " + mensagem.Corpo);
-				    		
-				    		byte[] file = decodeFileFromBase64Binary(mensagem.Arquivo_Base64);
-				    		Path destinationFile = Paths.get(nomePasta, mensagem.Corpo);
-				    		Files.write(destinationFile, file);
-				    		arquivos.add(mensagem.Corpo);
-				    		System.out.println("peer com arquivo procurado: "+ recPkt.getAddress().toString() + ":" + recPkt.getPort() +" "+ mensagem.Corpo);
-				    }
+								break;
+							}
+							
+							mensagensProcessadas.add(mensagem.Tipo + " - " + mensagem.Ip_Requisitante + ":" + mensagem.Porta_Requisitante + " " + mensagem.Corpo);
+							
+							byte[] file = decodeFileFromBase64Binary(mensagem.Arquivo_Base64);
+							Path destinationFile = Paths.get(nomePasta, mensagem.Corpo);
+							Files.write(destinationFile, file);
+							arquivos.add(mensagem.Corpo);
+							System.out.println("peer com arquivo procurado: " + mensagem.IpPorta_Sender +" "+ mensagem.Corpo);
+					}
 				}
 			} catch (Exception e) {
 				System.out.println("Não foi possível escutar na porta: "+minhaPorta);
@@ -130,15 +129,16 @@ public class Peer {
     * @param  mensagem   O objeto mensagem
     * @return         	 true se já foi processado, false caso contrário
     */
-    public static boolean mensagemJaProcessada(Mensagem mensagem) {
-    	for(String m : mensagensProcessadas) {
-    		String novaMensagem = mensagem.Ip_Requisitante + ":" + mensagem.Porta_Requisitante + " " + mensagem.Corpo;
-    		if(novaMensagem.equals(m)) {
-    			return true;
-    		}
-    	}
-    	return false;
-    }
+	public static boolean mensagemJaProcessada(Mensagem mensagem) {
+		for(String m : mensagensProcessadas) {
+			String novaMensagem = mensagem.Tipo + " - " + mensagem.Ip_Requisitante + ":" + mensagem.Porta_Requisitante + " " + mensagem.Corpo;
+			
+			if(novaMensagem.equals(m)) {
+				return true;
+			}
+		}
+		return false;
+	}
 	
     /**
     * Converte um arquivo binário em uma string base64
@@ -170,7 +170,7 @@ public class Peer {
 	public static void preencheArquivosPasta() {
 		//REFERÊNCIA: https://stackoverflow.com/questions/5694385/getting-the-filenames-of-all-files-in-a-folder
 		arquivos = new ArrayList<String>();
-		File f1 = new File(nomePasta);
+		File f1 = new File(nomePasta.trim());
 		if(f1.isDirectory()) {
 			File[] files = f1.listFiles();
 			for (File file : files) {
@@ -193,30 +193,37 @@ public class Peer {
     * @return         	 Uma String com o ip e porta do peer que foi sorteado para receber a mensagem
     */
 	public static String enviaMensagem(Mensagem mensagem) throws Exception {
-	    Random rng = new Random();
-	    String ipPeerTarget;
-	    int portaPeerTarget;
-	    
-	    if(mensagem.Tipo == "SEARCH") {
-		    if(rng.nextBoolean()) {
-		    	ipPeerTarget = ipPeer1;
-		    	portaPeerTarget = portaPeer1;
-		    } else {
-		    	ipPeerTarget = ipPeer2;
-		    	portaPeerTarget = portaPeer2;
-		    }
-	    } else {
-	    	ipPeerTarget = mensagem.Ip_Requisitante;
-	    	portaPeerTarget = mensagem.Porta_Requisitante;
-	    }
-	    
-    	DatagramSocket clientSocket = new DatagramSocket();
-    	InetAddress IPAddress = InetAddress.getByName(ipPeer1);
-    	
-    	byte[] sendData = new byte[1024];
-		sendData = gson.toJson(mensagem).getBytes();
-		DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, IPAddress, portaPeer1);
+		Random rng = new Random();
+		String ipPeerTarget = "000";
+		int portaPeerTarget = 0;
+		
+		switch(mensagem.Tipo) {
+			case "SEARCH":
+				if(rng.nextBoolean()) {
+					ipPeerTarget = ipPeer1;
+					portaPeerTarget = portaPeer1;
+				} else {
+					ipPeerTarget = ipPeer2;
+					portaPeerTarget = portaPeer2;
+				}
+				break;
+			case "RESPONSE":
+				ipPeerTarget = mensagem.Ip_Requisitante;
+				portaPeerTarget = mensagem.Porta_Requisitante;
+				break;
+			default:
+				System.out.println("tipo da mensagem inválido");
+				break;
+		}
+
+		DatagramSocket clientSocket = new DatagramSocket();
+		InetAddress IPAddress = InetAddress.getByName(ipPeerTarget);
+		
+		byte[] sendData = new byte[1024];
+		sendData = new Gson().toJson(mensagem).getBytes();
+		DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, IPAddress, portaPeerTarget);
 		clientSocket.send(sendPacket);
+		clientSocket.close();
 		return ipPeerTarget + ":" +portaPeerTarget;
 	}
 	
@@ -229,25 +236,47 @@ public class Peer {
     */
 	public static void obtemDadosTeclado(Scanner sc) {
 	    //Obtem a pasta do peer
-		System.out.println("Funcionalidade INICIALIZA selecionada\nInsira o nome da pasta:\n");
+			System.out.println("Funcionalidade INICIALIZA selecionada\nInsira o nome da pasta:\n");
 	    nomePasta = sc.nextLine();
-	    
-	    //Obtem o ip e porta do peer usuário
-	    System.out.println("Insira o seu IP");
-	    meuIp = sc.nextLine();
-	    System.out.println("Insira a sua porta");
-	    minhaPorta = Integer.parseInt(sc.nextLine());
-	    
-	    //Obtem o ip e porta de dois outros peers
-	    System.out.println("Insira o IP do peer 1:");
-	    ipPeer1 = sc.nextLine();
-	    System.out.println("Insira a porta do peer 1:");
-	    portaPeer1 =  Integer.parseInt(sc.nextLine());
+	    String ipPorta;
 
-	    System.out.println("Insira o IP do peer 2:");
-	    ipPeer2 = sc.nextLine();
-	    System.out.println("Insira a porta do peer 2:");
-	    portaPeer2 =  Integer.parseInt(sc.nextLine());
+	    //Obtem o ip e porta do peer usuário
+			while(true) {
+				System.out.println("Insira o seu IP e Porta (e.g: 127.0.0.1:7000)");
+				ipPorta = sc.nextLine();
+				if(ipPorta.split(":").length != 2) {
+					System.out.println("Formato inválido! por favor inserir no formato ip:porta");
+					continue;
+				}
+				meuIp = ipPorta.split(":")[0];
+				minhaPorta = Integer.parseInt(ipPorta.split(":")[1]);
+				break;
+			}
+
+	    //Obtem o ip e porta de dois outros peers
+			while(true) {
+				System.out.println("Insira o IP do peer 1:");
+				ipPorta = sc.nextLine();
+				if (ipPorta.split(":").length != 2) {
+					System.out.println("Formato inválido! por favor inserir no formato ip:porta");
+					continue;
+				}
+				ipPeer1 = ipPorta.split(":")[0];
+				portaPeer1 = Integer.parseInt(ipPorta.split(":")[1]);
+				break;
+			}
+
+			while(true) {
+				System.out.println("Insira o IP do peer 2:");
+				ipPorta = sc.nextLine();
+				if (ipPorta.split(":").length != 2) {
+					System.out.println("Formato inválido! por favor inserir no formato ip:porta");
+					continue;
+				}
+				ipPeer2 = ipPorta.split(":")[0];
+				portaPeer2 = Integer.parseInt(ipPorta.split(":")[1]);
+				break;
+			}
 	}
 	
 	public static void main(String[] args) throws Exception {
@@ -262,15 +291,15 @@ public class Peer {
 		    	case "INICIALIZA":
 
 		    		obtemDadosTeclado(sc);
-		    	    preencheArquivosPasta();
+		    	  preencheArquivosPasta();
 		    	    
-		    	    System.out.println("arquivos da pasta: "+ nomePasta + ": " + String.join(", ", arquivos));
+		    	  System.out.println("arquivos da pasta: "+ nomePasta + ": " + String.join(", ", arquivos));
 				    
-		    	    //Cria a thread responsável por atualizar os arquivos da pasta a cada 30s
+		    	  //Cria a thread responsável por atualizar os arquivos da pasta a cada 30s
 				    Thread threadAtualizaPastas = new ThreadAtualizaArquivosPasta();
 				    threadAtualizaPastas.start();
 				    
-		    	    //Cria a thread responsável por ficar escutando requisições UDP
+		    	  //Cria a thread responsável por ficar escutando requisições UDP
 				    Thread threadRecebeRequests = new ThreadRecebeRequest();
 				    threadRecebeRequests.start();
 				    
@@ -284,20 +313,19 @@ public class Peer {
 		    		//Envia uma mensagem para um peer aleatório
 			    	Mensagem mensagem = new Mensagem();
 			    	mensagem.Corpo = arquivoBusca;
-					mensagem.Tipo = "SEARCH";
-					mensagem.Ip_Requisitante = meuIp;
-					mensagem.Porta_Requisitante = minhaPorta;
+						mensagem.Tipo = "SEARCH";
+						mensagem.Ip_Requisitante = meuIp;
+						mensagem.Porta_Requisitante = minhaPorta;
 
-					enviaMensagem(mensagem);
-					arquivoProcurado = arquivoBusca;
-					
+						enviaMensagem(mensagem);
+						arquivoProcurado = arquivoBusca;
 
-		    		//Funcionalidade G
-					//Cria a thread que fica esperando um tempo para saber se o arquivo nunca será recebido
-					Thread threadTimeoutArquivo = new ThreadTimeoutArquivo();
-					threadTimeoutArquivo.start();
-					
-		    		break;
+						//Funcionalidade G
+						//Cria a thread que fica esperando um tempo para saber se o arquivo nunca será recebido
+						Thread threadTimeoutArquivo = new ThreadTimeoutArquivo();
+						threadTimeoutArquivo.start();
+						
+						break;
 		    		
 		    	default:
 		    		System.out.println("Funcionalidade invalida");
